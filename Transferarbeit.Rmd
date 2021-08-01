@@ -1,0 +1,365 @@
+---
+title: "Auswertung Qualifikationsverfahren 2019"
+subtitle: "Transferarbeit"
+author: "phaecki"
+date: "`r Sys.Date()`"
+lang: "de"
+output:
+  prettydoc::html_pretty:
+    theme: architect
+    highlight: github
+    number_sections: yes
+    toc: TRUE
+    toc_depth: 1
+---
+
+```{r setup, echo=FALSE, include=FALSE}
+# Pakete laden
+library(tidyverse)
+library(readxl)
+library(kableExtra)
+library(prettydoc)
+library(knitr)
+library(broom)
+```
+
+```{r, include=FALSE}
+opts_chunk$set(echo = FALSE)
+```
+
+```{r}
+# Excel-Datei in Variablen laden
+qv2019 <- read_excel("QV2015-2019_DE-CH.xlsx", sheet = "2019")
+qv2018 <- read_excel("QV2015-2019_DE-CH.xlsx", sheet = "2018")
+qv2017 <- read_excel("QV2015-2019_DE-CH.xlsx", sheet = "2017")
+qv2016 <- read_excel("QV2015-2019_DE-CH.xlsx", sheet = "2016")
+qv2015 <- read_excel("QV2015-2019_DE-CH.xlsx", sheet = "2015")
+```
+
+# Einleitung
+Der erstellte Bericht umfasst verschiedene Auswertungen zu den Resultaten der mündlichen und schriftlichen Abschlussprüfungen im Zusammenhang mit dem **Qualifikationsverfahren (QV) 2019** sowie vorangegangener Durchführungen in der Deutschschweiz. Im Bericht enthalten sind die Resultate derjenigen Lernenden, welche das QV vollständig, d.h. die Erfahrungsnoten sowie die mündliche und schriftliche Abschlussprüfung, absolviert haben.
+
+# Teilnehmer QV 2019
+Total nahmen `r nrow(qv2019)` (Vorjahr: `r nrow(qv2018)`) Lernende in der Deutschschweiz am Qualifikationsverfahren 2019 teil.
+
+```{r}
+# Prüfungskreise mit einer Funktion zuweisen
+pkreis_zuweisen <- function(qv_datei) {
+  qv_datei %>% mutate(Prüfungskreis = case_when(Kanton %in% c("BS", "BL") ~ "Basel", Kanton %in% c("BE", "FR", "VS") ~ "Bern", Kanton == "GR" ~ "Graubünden", Kanton %in% c("LU", "NW", "OW") ~ "Luzern", Kanton == "SO" ~ "Solothurn", Kanton %in% c("SG", "TG", "AI", "AR") ~ "St.Gallen", Kanton %in% c("ZG", "SZ", "UR") ~ "Zug", Kanton %in% c("ZH", "AG", "GL", "SH") ~ "Zürich"))
+}
+qv2019Pkreis <- pkreis_zuweisen(qv2019)
+qv2018Pkreis <- pkreis_zuweisen(qv2018)
+qv2017Pkreis <- pkreis_zuweisen(qv2017)
+qv2016Pkreis <- pkreis_zuweisen(qv2016)
+qv2015Pkreis <- pkreis_zuweisen(qv2015)
+```
+
+## Teilnehmer nach Prüfungskreisen in absoluten Zahlen
+Die mündlichen und schriftlichen Abschlussprüfungen werden in `r length(unique(qv2019Pkreis$Prüfungskreis))` interkantonalen Prüfungskreisen durchgeführt.
+
+```{r}
+# Anzahl Teilnehmer 2019 pro Prüfungskreis ermitteln und als Tabelle ausgeben
+qv2019PkreisTeilnehmerAbs <- qv2019Pkreis %>%
+  select(Prüfungskreis) %>%
+  group_by(Prüfungskreis) %>%
+  summarise(Teilnehmerzahl = n())
+kbl(qv2019PkreisTeilnehmerAbs) %>%
+  kable_styling(full_width = FALSE, position = "left") %>%
+  column_spec(1, width = "11em") %>%
+  column_spec(2, width = "11em")
+```
+
+Am meisten Teilnehmer haben im Prüfungskreis `r qv2019PkreisTeilnehmerAbs$Prüfungskreis[which.max(qv2019PkreisTeilnehmerAbs$Teilnehmerzahl)]` am Qualifikationsverfahren 2019 teilgenommen.
+
+Die teilnehmenden Lernenden am QV verteilen sich wie folgt auf die Prüfungskreise:
+
+```{r, fig.width=8, fig.height=5}
+# Anzahl Teilnehmer 2019 pro Prüfungskreis als Säulendiagramm ausgeben
+qv2019Pkreis %>%
+  ggplot(aes(Prüfungskreis)) +
+  geom_bar(fill = "#6ba2de") +
+  labs(title = "Teilnehmer pro Prüfungskreis",
+       subtitle = "Qualifikationsverfahren 2019",
+       y = "Teilnehmerzahl")
+```
+
+## Teilnehmer nach Prüfungskreisen in Prozentwerten
+
+Mit einem Anteil von `r round((qv2019PkreisTeilnehmerAbs$Teilnehmerzahl[which.max(qv2019PkreisTeilnehmerAbs$Teilnehmerzahl)] / sum(qv2019PkreisTeilnehmerAbs$Teilnehmerzahl) * 100), digits = 2)`% haben prozentual am meisten Teilnehmer im Prüfungskreis `r qv2019PkreisTeilnehmerAbs$Prüfungskreis[which.max(qv2019PkreisTeilnehmerAbs$Teilnehmerzahl)]`  teilgenommen.
+
+```{r}
+# Prozentualer Anteil der Teilnehmer 2019 pro Prüfungskreis ermitteln und als Tabelle ausgeben
+qv2019PkreisTeilnehmerAbs %>%
+  summarise(Prüfungskreis, "Anteil in %" = round((Teilnehmerzahl / sum(Teilnehmerzahl) * 100), digits = 2)) %>%
+  kbl() %>%
+  kable_styling(full_width = FALSE, position = "left") %>%
+  column_spec(1, width = "11em") %>%
+  column_spec(2, width = "11em")
+```
+
+# Auswertungen der Prüfungsnoten
+
+```{r}
+# Prüfungsjahr in neuer Spalte hinzufügen
+qv2019PkreisNoten <- qv2019Pkreis %>%
+  select(Erfahrungsnote, "Note QV mündlich", "Note QV schriftlich", Prüfungskreis, Zeugnisnote) %>%
+  mutate(Jahr = "2019")
+qv2018PkreisNoten <- qv2018Pkreis %>%
+  select(Erfahrungsnote, "Note QV mündlich", "Note QV schriftlich", Prüfungskreis, Zeugnisnote) %>%
+  mutate(Jahr = "2018")
+qv2017PkreisNoten <- qv2017Pkreis %>%
+  select(Erfahrungsnote, "Note QV mündlich", "Note QV schriftlich", Prüfungskreis, Zeugnisnote) %>%
+  mutate(Jahr = "2017")
+qv2016PkreisNoten <- qv2016Pkreis %>%
+  select(Erfahrungsnote, "Note QV mündlich", "Note QV schriftlich", Prüfungskreis, Zeugnisnote) %>%
+  mutate(Jahr = "2016")
+qv2015PkreisNoten <- qv2015Pkreis %>%
+  select(Erfahrungsnote, "Note QV mündlich", "Note QV schriftlich", Prüfungskreis, Zeugnisnote) %>%
+  mutate(Jahr = "2015")
+```
+
+## Auswertung mündliche Abschlussprüfung 2019
+
+Der Mittelwert [^1] der mündlichen Abschlussprüfung 2019 in der Deutschschweiz entspricht der Note `r round(mean(qv2019PkreisNoten$"Note QV mündlich"), digits = 2)` und der Median der Note `r median(qv2019PkreisNoten$"Note QV mündlich")`.
+
+```{r}
+# Mittelwert der mündlichen Prüfung nach Prüfungskreis als Tabelle ausgeben
+qv2019PkreisNoten %>%
+  group_by(Prüfungskreis) %>%
+  summarise(Mittelwert = round(mean(`Note QV mündlich`), digits = 2)) %>%
+  kbl() %>%
+  kable_styling(full_width = FALSE, position = "left") %>%
+  column_spec(1, width = "11em") %>%
+  column_spec(2, width = "11em")
+```
+
+Die Verteilung der mündlichen Prüfungsnoten in den verschiedenen Prüfungskreisen sieht wie folgt aus:
+
+```{r}
+# Noten der mündlichen Prüfung nach Prüfungskreis als Boxplot ausgeben
+qv2019PkreisNoten %>%
+  group_by(Prüfungskreis) %>%
+  ggplot(aes(Prüfungskreis, `Note QV mündlich`)) +
+  geom_boxplot() +
+  labs(title = "Noten mündliche Prüfung",
+       subtitle = "Qualifikationsverfahren 2019",
+       y = "Note")
+```
+
+## Auswertung schriftliche Abschlussprüfung 2019
+
+Der Mittelwert der schriftlichen Abschlussprüfung 2019 in der Deutschschweiz entspricht der Note `r round(mean(qv2019PkreisNoten$"Note QV schriftlich"), digits = 2)` und der Median der Note `r median(qv2019PkreisNoten$"Note QV schriftlich")`.
+
+```{r}
+# Mittelwert der schriftlichen Prüfung nach Prüfungskreis als Tabelle ausgeben
+qv2019PkreisNoten %>%
+  group_by(Prüfungskreis) %>%
+  summarise(Mittelwert = round(mean(`Note QV schriftlich`), digits = 2)) %>%
+  kbl() %>%
+  kable_styling(full_width = FALSE, position = "left") %>%
+  column_spec(1, width = "11em") %>%
+  column_spec(2, width = "11em")
+```
+
+Die Verteilung der schriftlichen Prüfungsnoten in den verschiedenen Prüfungskreisen sieht wie folgt aus:
+
+```{r}
+# Noten der schriftlichen Prüfung nach Prüfungskreis als Boxplot ausgeben
+qv2019PkreisNoten %>%
+  group_by(Prüfungskreis) %>%
+  ggplot(aes(Prüfungskreis, `Note QV schriftlich`)) +
+  geom_boxplot() +
+  labs(title = "Noten schriftliche Prüfung",
+       subtitle = "Qualifikationsverfahren 2019",
+       y = "Note")
+```
+
+## Notenverteilung der Abschlussprüfung
+
+```{r}
+# Tiefste und höchste Note der mündlichen Prüfung evaluieren sowie die Anzahl Erreichungen
+minNoteMdl <- min(qv2019PkreisNoten$`Note QV mündlich`)
+maxNoteMdl <- max(qv2019PkreisNoten$`Note QV mündlich`)
+minNoteMdlAnzahl <- length(qv2019PkreisNoten$`Note QV mündlich`[qv2019PkreisNoten$`Note QV mündlich` == minNoteMdl])
+maxNoteMdlAnzahl <- length(qv2019PkreisNoten$`Note QV mündlich`[qv2019PkreisNoten$`Note QV mündlich` == maxNoteMdl])
+```
+
+Die tiefste Note an der mündlichen Abschlussprüfung war `r minNoteMdl` und wurde von `r minNoteMdlAnzahl` Teilnehmern erreicht. Die höchste Note an der mündlichen Abschlussprüfung war `r maxNoteMdl` und wurde von `r maxNoteMdlAnzahl` Teilnehmern erzielt.
+
+Die Notenverteilung der mündlichen Abschlussprüfung zeigt folgendes Bild:
+
+```{r}
+# Notenverteilung der mündlichen Prüfung als Histogram ausgeben
+qv2019PkreisNoten %>% 
+  ggplot(aes(`Note QV mündlich`)) +
+  geom_histogram(binwidth = 0.5) +
+  scale_x_continuous(breaks = c(2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6)) +
+  labs(title = "Notenverteilung mündliche Abschlussprüfung",
+       subtitle = "Qualifikationsverfahren 2019",
+       x = "Note",
+       y = "Anzahl") +
+  geom_vline(xintercept = 4, size = 0.75, linetype = "dashed", colour = "#6ba2de") +
+  annotate("text", x = 3.9, y = 82, size = 4, hjust = 1, label = "Note 4 =\nBestanden")
+```
+
+```{r}
+# Tiefste und höchste Note der schriftlichen Prüfung evaluieren sowie die Anzahl Erreichungen
+minNoteSchr <- min(qv2019PkreisNoten$`Note QV schriftlich`)
+maxNoteSchr <- max(qv2019PkreisNoten$`Note QV schriftlich`)
+minNoteSchrAnzahl <- length(qv2019PkreisNoten$`Note QV schriftlich`[qv2019PkreisNoten$`Note QV schriftlich` == minNoteSchr])
+maxNoteSchrAnzahl <- length(qv2019PkreisNoten$`Note QV schriftlich`[qv2019PkreisNoten$`Note QV schriftlich` == maxNoteSchr])
+```
+
+Die tiefste Note an der schriftlichen Abschlussprüfung war `r minNoteSchr` und wurde von `r minNoteSchrAnzahl` Teilnehmern erreicht. Die höchste Note an der schriftlichen Abschlussprüfung war `r maxNoteSchr` und wurde von `r maxNoteSchrAnzahl` Teilnehmern erzielt.
+
+Die Notenverteilung der schriftlichen Abschlussprüfung sieht folgendermassen aus:
+
+```{r}
+# Notenverteilung der schriftlichen Prüfung als Histogram ausgeben
+qv2019PkreisNoten %>% 
+  ggplot(aes(`Note QV schriftlich`)) +
+  geom_histogram(binwidth = 0.5) +
+  scale_x_continuous(breaks = c(2.5, 3, 3.5, 4, 4.5, 5, 5.5)) +
+  labs(title = "Notenverteilung schriftliche Abschlussprüfung",
+       subtitle = "Qualifikationsverfahren 2019",
+       x = "Note",
+       y = "Anzahl") +
+  geom_vline(xintercept = 4, size = 0.75, linetype = "dashed", colour = "#6ba2de") +
+  annotate("text", x = 3.7, y = 97, size = 4, hjust = 1, label = "Note 4 =\nBestanden")
+```
+
+# Auswertungen zu bestandenem und nicht bestandenem QV
+
+```{r}
+# Anzahl Lernende bestimmen, die das QV bestanden bzw. nicht bestanden haben
+qv2019BE <- qv2019 %>%
+  filter(Zeugnisnote >= 4.0)
+qv2019NB <- qv2019 %>%
+  filter(Zeugnisnote < 4.0)
+```
+
+Das Qualifikationsverfahren 2019 haben `r length(qv2019BE$Zeugnisnote)` Lernende mit einer Note von grösser/gleich 4.0 bestanden. Nicht bestanden haben das QV `r length(qv2019NB$Zeugnisnote)` Lernende.
+
+## Vergleich bestandenes/nicht bestandenes QV von 2015 bis 2019
+
+```{r}
+# Datensätze 2015 bis 2019 verketten
+qvPkreisNoten <- qv2019PkreisNoten %>%
+  rbind(qv2018PkreisNoten) %>%
+  rbind(qv2017PkreisNoten) %>%
+  rbind(qv2016PkreisNoten) %>%
+  rbind(qv2015PkreisNoten)
+```
+
+Prozentualer Anteil der Teilnehmer, die das QV in den vergangenen fünf Jahren bestanden bzw. nicht bestanden haben:
+
+```{r}
+# Prozentualer Anteil von QV bestanden bzw. nicht bestanden als Tabelle ausgeben
+qvPkreisNoten %>% 
+  group_by(Jahr) %>% 
+  summarise("Bestanden in %" = round(length(Zeugnisnote[Zeugnisnote >= 4]) / length(Zeugnisnote) * 100, digits = 2), "Nicht bestanden in %" = round(length(Zeugnisnote[Zeugnisnote < 4]) / length(Zeugnisnote) * 100, digits = 2)) %>% 
+  arrange(desc(Jahr)) %>% 
+  kbl() %>% 
+  kable_styling(full_width = FALSE, position = "left") %>%
+  column_spec(1, width = "11em") %>%
+  column_spec(2, width = "11em") %>% 
+  column_spec(3, width = "18em")
+```
+
+Der Mittelwert, derjenigen Teilnehmer, welche das Qualifikationsverfahren in den vergangenen fünf Jahren bestanden haben, beträgt `r round(length(qvPkreisNoten$Zeugnisnote[qvPkreisNoten$Zeugnisnote >= 4]) / length(qvPkreisNoten$Zeugnisnote) * 100, digits = 2)`%.
+
+# Statistische Auswertungen
+
+Dieses Kapitel umfasst die Berechnung des Konfidenzintervalls sowie der linearen Regression.
+
+## Konfidenzintervall
+
+Das 95%-Konfidenzintervall der Durchschnittsnote der schriftlichen Abschlussprüfung 2019 wird aus einer Stichprobe von 50 zufällig gezogenen Lernenden bzw. deren Noten berechnet.
+
+```{r}
+# Konfidenzintervall der Durchschnittsnote der schr. Abschlussprüfung berechnen
+set.seed(10)
+n <- 50
+stichprobe <- sample(qv2019PkreisNoten$`Note QV schriftlich`, n, replace = TRUE)
+
+muHat <- mean(stichprobe)
+seHat <- sd(stichprobe) / sqrt(n)
+
+qnorm(c(0.025, 0.975), muHat, seHat)
+```
+
+Mit einer Monte-Carlo-Simulation werden 10'000 Konfidenzintervalle wie oben berechnet. Abschliessend wird ermittelt, wie hoch der prozentuale Anteil derjenigen Konfidenzintervalle ist, welche den wahren Mittelwert enthalten.
+
+```{r}
+# 10'000 Konfidenzintervalle mit einer Monte-Carlo-Simulation berechnen
+set.seed(15)
+B <- 10000
+mu <- mean(qv2019PkreisNoten$`Note QV schriftlich`)
+
+kiWdh <- replicate(B, {
+  n <- 50
+  stichprobe <- sample(qv2019PkreisNoten$`Note QV schriftlich`, n, replace = TRUE)
+  muHat <- mean(stichprobe)
+  seHat <- sd(stichprobe) / sqrt(n)
+  ki <- qnorm(c(0.025, 0.975), muHat, seHat)
+  between(mu, ki[1], ki[2])
+})
+mean(kiWdh)
+```
+
+Das 95%-Konfidenzintervall zum prozentualen Anteil der bestandenen schriftlichen Abschlussprüfungen 2019 wird aus einer Stichprobe von 50 zufällig gezogenen Lernenden bzw. deren Noten berechnet.
+
+```{r}
+# Konfidenzintervall der bestandenen schr. Abschlussprüfungen berechnen
+set.seed(20)
+n <- 50
+p <- length(qv2019PkreisNoten$`Note QV schriftlich`[qv2019PkreisNoten$`Note QV schriftlich` >= 4.0]) / length(qv2019PkreisNoten$`Note QV schriftlich`)
+stichprobeBE <- sample(c(0, 1), n, replace = TRUE, prob = c(1 - p, p))
+
+muHatBE <- mean(stichprobeBE)
+seHatBE <- sqrt(muHatBE * (1 - muHatBE) / n)
+
+qnorm(c(0.025, 0.975), muHatBE, seHatBE)
+```
+
+Mittels Monte-Carlo-Simulation werden 10'000 Konfidenzintervalle wie oben berechnet. Danach wird ermittelt, wie hoch der prozentuale Anteil derjenigen Konfidenzintervalle ist, die den wahren Wert enthalten.
+
+```{r}
+# 10'000 Konfidenzintervalle mit einer Monte-Carlo-Simulation berechnen
+set.seed(25)
+B <- 10000
+
+kiWdhBE <- replicate(B, {
+  n <- 50
+  stichprobeBE <- sample(c(0, 1), n, replace = TRUE, prob = c(1 - p, p))
+  muHatBE <- mean(stichprobeBE)
+  seHatBE <- sqrt(muHatBE * (1 - muHatBE) / n)
+  kiBE <- qnorm(c(0.025, 0.975), muHatBE, seHatBE)
+  between(p, kiBE[1], kiBE[2])
+})
+mean(kiWdhBE)
+```
+
+## Lineare Regression
+
+```{r}
+# Lineare Regression mit einer Variablen berechnen
+LR <- lm(`Note QV mündlich` ~ Erfahrungsnote, data = qv2019PkreisNoten)
+
+tidy(LR) %>% 
+  kbl() %>% 
+  kable_styling(full_width = FALSE, position = "left")
+
+glance(LR) %>% 
+  kbl() %>% 
+  kable_styling(full_width = FALSE, position = "left", font_size = 15)
+```
+
+Der P-Wert für die berechnete lineare Regression beträgt 0.0000104 und ist signifikant. Die durchschnittliche Grösse der Residuen bzw. der Sigma-Wert ist 0.7444 und der adjusted R-squared hat einen niedrigen Wert von 0.0541.
+
+# Fazit
+
+## Fazit zur Auswertung
+Die Teilnehmerzahl am Qualifikationsverfahren 2019 war mit 334 Lernenden ähnlich hoch wie im Vorjahr. Die Auswertung der Abschlussprüfung ergab, dass der Mittelwert der erreichten Note an der mündlichen Prüfung (Mittelwert: 4.93) höher war als an der schriftlichen Prüfung (Mittelwert: 4.04). Der prozentuale Anteil der Teilnehmer, welche das QV mit einer Note von grösser/gleich 4.0 bestanden haben, war mit 93.71% rund ein Prozent tiefer als 2018.
+
+[^1]: Im vorliegenden Bericht ist mit «Mittelwert» immer das arithmetische Mittel gemeint.
